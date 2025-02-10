@@ -18,6 +18,7 @@ export type Provider =
   | 'linkedin_oidc'
   | 'notion'
   | 'slack'
+  | 'slack_oidc'
   | 'spotify'
   | 'twitch'
   | 'twitter'
@@ -80,9 +81,14 @@ export type GoTrueClientOptions = {
    * @experimental
    */
   lock?: LockFunc
+  /**
+   * Set to "true" if there is a custom authorization header set globally.
+   * @experimental
+   */
+  hasCustomAuthorizationHeader?: boolean
 }
 
-export type WeakPasswordReasons = 'length' | 'characters' | 'pwned' | string
+export type WeakPasswordReasons = 'length' | 'characters' | 'pwned' | (string & {})
 export type WeakPassword = {
   reasons: WeakPasswordReasons[]
   message: string
@@ -124,7 +130,7 @@ export type AuthResponsePassword =
 /**
  * AuthOtpResponse is returned when OTP is used.
  *
- * {@see AuthRsponse}
+ * {@see AuthResponse}
  */
 export type AuthOtpResponse =
   | {
@@ -259,7 +265,7 @@ export interface Session {
  */
 export interface AMREntry {
   /** Authentication method name. */
-  method: 'password' | 'otp' | 'oauth' | 'mfa/totp' | string
+  method: 'password' | 'otp' | 'oauth' | 'mfa/totp' | (string & {})
 
   /**
    * Timestamp when the method was successfully used. Represents number of
@@ -296,10 +302,9 @@ export interface Factor {
   friendly_name?: string
 
   /**
-   * Type of factor. Only `totp` supported with this version but may change in
-   * future versions.
+   * Type of factor. `totp` and `phone` supported with this version
    */
-  factor_type: 'totp' | string
+  factor_type: 'totp' | 'phone' | (string & {})
 
   /** Factor's status. */
   status: 'verified' | 'unverified'
@@ -339,6 +344,7 @@ export interface User {
   role?: string
   updated_at?: string
   identities?: UserIdentity[]
+  is_anonymous?: boolean
   factors?: Factor[]
 }
 
@@ -366,7 +372,7 @@ export interface UserAttributes {
   nonce?: string
 
   /**
-   * A custom data object to store the user's metadata. This maps to the `auth.users.user_metadata` column.
+   * A custom data object to store the user's metadata. This maps to the `auth.users.raw_user_meta_data` column.
    *
    * The `data` should be a JSON object that includes user-specific info, such as their first and last name.
    *
@@ -376,7 +382,7 @@ export interface UserAttributes {
 
 export interface AdminUserAttributes extends Omit<UserAttributes, 'data'> {
   /**
-   * A custom data object to store the user's metadata. This maps to the `auth.users.user_metadata` column.
+   * A custom data object to store the user's metadata. This maps to the `auth.users.raw_user_meta_data` column.
    *
    *
    * The `user_metadata` should be a JSON object that includes user-specific info, such as their first and last name.
@@ -431,6 +437,22 @@ export interface AdminUserAttributes extends Omit<UserAttributes, 'data'> {
    * Setting this role to `service_role` is not recommended as it grants the user admin privileges.
    */
   role?: string
+
+  /**
+   * The `password_hash` for the user's password.
+   *
+   * Allows you to specify a password hash for the user. This is useful for migrating a user's password hash from another service.
+   *
+   * Supports bcrypt, scrypt (firebase), and argon2 password hashes.
+   */
+  password_hash?: string
+
+  /**
+   * The `id` for the user.
+   *
+   * Allows you to overwrite the default `id` set for the user.
+   */
+  id?: string
 }
 
 export interface Subscription {
@@ -448,8 +470,17 @@ export interface Subscription {
   unsubscribe: () => void
 }
 
-export interface UpdatableFactorAttributes {
-  friendlyName: string
+export type SignInAnonymouslyCredentials = {
+  options?: {
+    /**
+     * A custom data object to store the user's metadata. This maps to the `auth.users.raw_user_meta_data` column.
+     *
+     * The `data` should be a JSON object that includes user-specific info, such as their first and last name.
+     */
+    data?: object
+    /** Verification token received when the user completes the captcha on the site. */
+    captchaToken?: string
+  }
 }
 
 export type SignUpWithPasswordCredentials =
@@ -462,7 +493,7 @@ export type SignUpWithPasswordCredentials =
         /** The redirect url embedded in the email link */
         emailRedirectTo?: string
         /**
-         * A custom data object to store the user's metadata. This maps to the `auth.users.user_metadata` column.
+         * A custom data object to store the user's metadata. This maps to the `auth.users.raw_user_meta_data` column.
          *
          * The `data` should be a JSON object that includes user-specific info, such as their first and last name.
          */
@@ -478,7 +509,7 @@ export type SignUpWithPasswordCredentials =
       password: string
       options?: {
         /**
-         * A custom data object to store the user's metadata. This maps to the `auth.users.user_metadata` column.
+         * A custom data object to store the user's metadata. This maps to the `auth.users.raw_user_meta_data` column.
          *
          * The `data` should be a JSON object that includes user-specific info, such as their first and last name.
          */
@@ -521,7 +552,7 @@ export type SignInWithPasswordlessCredentials =
         /** If set to false, this method will not create a new user. Defaults to true. */
         shouldCreateUser?: boolean
         /**
-         * A custom data object to store the user's metadata. This maps to the `auth.users.user_metadata` column.
+         * A custom data object to store the user's metadata. This maps to the `auth.users.raw_user_meta_data` column.
          *
          * The `data` should be a JSON object that includes user-specific info, such as their first and last name.
          */
@@ -537,7 +568,7 @@ export type SignInWithPasswordlessCredentials =
         /** If set to false, this method will not create a new user. Defaults to true. */
         shouldCreateUser?: boolean
         /**
-         * A custom data object to store the user's metadata. This maps to the `auth.users.user_metadata` column.
+         * A custom data object to store the user's metadata. This maps to the `auth.users.raw_user_meta_data` column.
          *
          * The `data` should be a JSON object that includes user-specific info, such as their first and last name.
          */
@@ -566,8 +597,8 @@ export type SignInWithOAuthCredentials = {
 }
 
 export type SignInWithIdTokenCredentials = {
-  /** Provider name or OIDC `iss` value identifying which provider should be used to verify the provided token. Supported names: `google`, `apple`, `azure`, `facebook`, `keycloak` (deprecated). */
-  provider: 'google' | 'apple' | 'azure' | 'facebook' | string
+  /** Provider name or OIDC `iss` value identifying which provider should be used to verify the provided token. Supported names: `google`, `apple`, `azure`, `facebook`, `kakao`, `keycloak` (deprecated). */
+  provider: 'google' | 'apple' | 'azure' | 'facebook' | 'kakao' | (string & {})
   /** OIDC ID token issued by the specified provider. The `iss` claim in the ID token must match the supplied provider. Some ID tokens contain an `at_hash` which require that you provide an `access_token` value to be accepted properly. If the token contains a `nonce` claim you must supply the nonce used to obtain the ID token. */
   token: string
   /** If the ID token contains an `at_hash` claim, then the hash of this value is compared to the value in the ID token. */
@@ -708,7 +739,7 @@ export type GenerateEmailChangeLinkParams = {
 
 export interface GenerateLinkOptions {
   /**
-   * A custom data object to store the user's metadata. This maps to the `auth.users.user_metadata` column.
+   * A custom data object to store the user's metadata. This maps to the `auth.users.raw_user_meta_data` column.
    *
    * The `data` should be a JSON object that includes user-specific info, such as their first and last name.
    */
@@ -769,14 +800,7 @@ export type GenerateLinkType =
   | 'email_change_current'
   | 'email_change_new'
 
-export type MFAEnrollParams = {
-  /** The type of factor being enrolled. */
-  factorType: 'totp'
-  /** Domain which the user is enrolled with. */
-  issuer?: string
-  /** Human readable name assigned to the factor. */
-  friendlyName?: string
-}
+export type MFAEnrollParams = MFAEnrollTOTPParams | MFAEnrollPhoneParams
 
 export type MFAUnenrollParams = {
   /** ID of the factor being unenrolled. */
@@ -797,6 +821,8 @@ export type MFAVerifyParams = {
 export type MFAChallengeParams = {
   /** ID of the factor to be challenged. Returned in enroll(). */
   factorId: string
+  /** Messaging channel to use (e.g. whatsapp or sms). Only relevant for phone factors */
+  channel?: 'sms' | 'whatsapp'
 }
 
 export type MFAChallengeAndVerifyParams = {
@@ -831,40 +857,7 @@ export type AuthMFAVerifyResponse =
       error: AuthError
     }
 
-export type AuthMFAEnrollResponse =
-  | {
-      data: {
-        /** ID of the factor that was just enrolled (in an unverified state). */
-        id: string
-
-        /** Type of MFA factor. Only `totp` supported for now. */
-        type: 'totp'
-
-        /** TOTP enrollment information. */
-        totp: {
-          /** Contains a QR code encoding the authenticator URI. You can
-           * convert it to a URL by prepending `data:image/svg+xml;utf-8,` to
-           * the value. Avoid logging this value to the console. */
-          qr_code: string
-
-          /** The TOTP secret (also encoded in the QR code). Show this secret
-           * in a password-style field to the user, in case they are unable to
-           * scan the QR code. Avoid logging this value to the console. */
-          secret: string
-
-          /** The authenticator URI encoded within the QR code, should you need
-           * to use it. Avoid loggin this value to the console. */
-          uri: string
-        }
-        /** Friendly name of the factor, useful for distinguishing between factors **/
-        friendly_name?: string
-      }
-      error: null
-    }
-  | {
-      data: null
-      error: AuthError
-    }
+export type AuthMFAEnrollResponse = AuthMFAEnrollTOTPResponse | AuthMFAEnrollPhoneResponse
 
 export type AuthMFAUnenrollResponse =
   | {
@@ -882,6 +875,9 @@ export type AuthMFAChallengeResponse =
         /** ID of the newly created challenge. */
         id: string
 
+        /** Factor Type which generated the challenge */
+        type: 'totp' | 'phone'
+
         /** Timestamp in UNIX seconds when this challenge will no longer be usable. */
         expires_at: number
       }
@@ -897,6 +893,8 @@ export type AuthMFAListFactorsResponse =
 
         /** Only verified TOTP factors. (A subset of `all`.) */
         totp: Factor[]
+        /** Only verified Phone factors. (A subset of `all`.) */
+        phone: Factor[]
       }
       error: null
     }
@@ -944,6 +942,8 @@ export interface GoTrueMFAApi {
    * Upon verifying a factor, all other sessions are logged out and the current session's authenticator level is promoted to `aal2`.
    *
    */
+  enroll(params: MFAEnrollTOTPParams): Promise<AuthMFAEnrollTOTPResponse>
+  enroll(params: MFAEnrollPhoneParams): Promise<AuthMFAEnrollPhoneResponse>
   enroll(params: MFAEnrollParams): Promise<AuthMFAEnrollResponse>
 
   /**
@@ -1124,4 +1124,107 @@ export type SignOut = {
    * the current session!
    */
   scope?: 'global' | 'local' | 'others'
+}
+
+export type MFAEnrollTOTPParams = {
+  /** The type of factor being enrolled. */
+  factorType: 'totp'
+  /** Domain which the user is enrolled with. */
+  issuer?: string
+  /** Human readable name assigned to the factor. */
+  friendlyName?: string
+}
+export type MFAEnrollPhoneParams = {
+  /** The type of factor being enrolled. */
+  factorType: 'phone'
+  /** Human readable name assigned to the factor. */
+  friendlyName?: string
+  /** Phone number associated with a factor. Number should conform to E.164 format */
+  phone: string
+}
+
+export type AuthMFAEnrollTOTPResponse =
+  | {
+      data: {
+        /** ID of the factor that was just enrolled (in an unverified state). */
+        id: string
+
+        /** Type of MFA factor.*/
+        type: 'totp'
+
+        /** TOTP enrollment information. */
+        totp: {
+          /** Contains a QR code encoding the authenticator URI. You can
+           * convert it to a URL by prepending `data:image/svg+xml;utf-8,` to
+           * the value. Avoid logging this value to the console. */
+          qr_code: string
+
+          /** The TOTP secret (also encoded in the QR code). Show this secret
+           * in a password-style field to the user, in case they are unable to
+           * scan the QR code. Avoid logging this value to the console. */
+          secret: string
+
+          /** The authenticator URI encoded within the QR code, should you need
+           * to use it. Avoid loggin this value to the console. */
+          uri: string
+        }
+        /** Friendly name of the factor, useful for distinguishing between factors **/
+        friendly_name?: string
+      }
+      error: null
+    }
+  | {
+      data: null
+      error: AuthError
+    }
+
+export type AuthMFAEnrollPhoneResponse =
+  | {
+      data: {
+        /** ID of the factor that was just enrolled (in an unverified state). */
+        id: string
+
+        /** Type of MFA factor. */
+        type: 'phone'
+
+        /** Friendly name of the factor, useful for distinguishing between factors **/
+        friendly_name?: string
+
+        /** Phone number of the MFA factor in E.164 format. Used to send messages  */
+        phone: string
+      }
+      error: null
+    }
+  | {
+      data: null
+      error: AuthError
+    }
+
+export type JwtHeader = {
+  alg: 'RS256' | 'ES256' | 'HS256'
+  kid: string
+  typ: string
+}
+
+export type RequiredClaims = {
+  iss: string
+  sub: string
+  aud: string | string[]
+  exp: number
+  iat: number
+  role: string
+  aal: AuthenticatorAssuranceLevels
+  session_id: string
+}
+
+export type JwtPayload = RequiredClaims & {
+  [key: string]: any
+}
+
+export interface JWK {
+  kty: 'RSA' | 'EC' | 'oct'
+  key_ops: string[]
+  alg?: string
+  kid?: string
+  [key: string]: any
 }

@@ -15,19 +15,29 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        node: ['18', '20']
+        node: ["18", "20"]
 
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Set up Node
-        uses: actions/setup-node@v1
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
 
-      - name: Run tests
+      - name: Build
         run: |
           npm ci
+          npm run build
+
+      - name: Run tests
+        run: |
           npm t
+
+      - name: Upload coverage results to Coveralls
+        uses: coverallsapp/github-action@master
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path-to-lcov: ./test/coverage/lcov.info
